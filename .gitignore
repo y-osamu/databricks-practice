@@ -1,0 +1,9 @@
+.venv
+.databricks
+uv.lock
+databricks.yml
+.python-version
+.vscode
+main.py
+pyproject.toml
+docs/interview_overview.md
