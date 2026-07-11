@@ -1,5 +1,9 @@
 # Development Rules
 
+## 開発の仕方
+- Databricks環境上で実行予定なので、spark = DatabricksSession.builder.serverless(True).getOrCreate()　のようなsessionを作る必要はない
+
+
 ## Work Log
 
 ### ログのまとめ方
