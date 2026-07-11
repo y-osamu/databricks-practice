@@ -1,0 +1,4 @@
+.venv
+.databricks
+uv.lock
+databricks.yml
