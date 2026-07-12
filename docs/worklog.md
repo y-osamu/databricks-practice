@@ -71,3 +71,39 @@
 - Gold layer（sales × products × inventory の結合・集計）の実装
 
 ---
+
+## 2026-07-12
+
+### 今日やったこと
+
+- `notebooks/silver/silver_demo.ipynb` と `notebooks/practice/silver_practice.ipynb` の `clean_sales` 内のバグ（`df_typedvfkffffffffavfaokoakokivfiavfa.withColumn(...)` という壊れたコード）を修正し、`df_typed = df.withColumn(...)` から始まる正しいメソッドチェーンに直した
+- `notebooks/gold/gold_practice.ipynb` を実装（これまではBronzeのコードがそのままコピーされたプレースホルダーだった）
+    - `workspace.silver._20_silver_{sales,products,inventory}` を結合・集計し、`workspace.gold._30_gold_{daily_sales_summary,inventory_status,product_ranking}` の3テーブルを作成する処理を実装
+    - 日次売上サマリ: sales×productsを結合し、sale_date×store×product/category単位でquantity/sales_amountを集計
+    - 在庫ステータス: inventory×productsを結合し、在庫評価額（stock_quantity×unit_price）と欠品/低在庫フラグを算出
+    - 商品別販売実績ランキング: salesをproduct_id単位で集計し、productsと結合してdense_rankで売上高降順のランキングを付与
+    - 各テーブルにGold処理時刻 `_gold_processed_at` を新規付与
+    - 書き込み後にスキーマ・件数を確認するセルを追加
+
+### 決定事項
+
+- Gold層の3テーブルは `_30_gold_` の接頭辞とし、Bronze(`_10_`)/Silver(`_20_`)の連番規則を継承する
+- Gold結合時、Silverの `_ingested_at` / `_silver_processed_at` はリネージュとして引き継がず、結合前にdropしてカラム名の衝突（ambiguous reference）を回避し、Gold固有の `_gold_processed_at` のみを付与する
+- 低在庫しきい値は暫定的に10個未満と定義（在庫データがstore×product当たり0〜100のランダム値であるため）。実運用では要調整の想定
+- `notebooks/gold/gold_demo.ipynb` は今回新規作成しない（既存の `gold_practice.ipynb` のみが存在し、bronze/silverのようなdemo/practiceの対になる既存ファイルがまだ無いため。将来demo版が必要になれば `gold_practice.ipynb` をコピーして作成する）
+
+### 発生した問題
+
+- Silverの `clean_sales` に壊れた変数名（`df_typedvfkffffffffavfaokoakokivfiavfa`）を含むコードがあり、そのままでは NameError/SyntaxError で失敗する状態だった（Gold実装がSilverのsalesに依存するため、先に修正が必要だった）
+
+### 解決方法
+
+- 該当セルの `df_typedvfkffffffffavfaokoakokivfiavfa.withColumn(...)` を `df_typed = df.withColumn(...)` から始まるメソッドチェーンに修正（silver_demo.ipynb / silver_practice.ipynb 両方）
+
+### TODO
+
+- Databricks上で修正後の `silver_practice.ipynb` を再実行し、`workspace.silver._20_silver_sales` が正しく作成されることを確認する
+- Databricks上で `gold_practice.ipynb` を実行し、`workspace.gold._30_gold_{daily_sales_summary,inventory_status,product_ranking}` の件数・スキーマ・サンプル行を確認する
+- 低在庫しきい値（`LOW_STOCK_THRESHOLD`）を実際のデータ・要件に合わせて見直す
+
+---
