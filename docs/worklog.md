@@ -107,3 +107,81 @@
 - 低在庫しきい値（`LOW_STOCK_THRESHOLD`）を実際のデータ・要件に合わせて見直す
 
 ---
+
+## 2026-07-12 (2)
+
+### 今日やったこと
+
+- `notebooks/model/build_model.ipynb` に日次売上数量予測モデル（回帰）を実装
+    - `workspace.silver._20_silver_{sales,products,inventory}` から直接特徴量を作成（Goldの結合済みテーブルは使わず自己完結）
+    - カレンダー×店舗×商品マスタの全組み合わせに実績売上を左結合し欠損を0埋めするdenseパネルを構築（売上ゼロの日を正当な観測として扱う）
+    - 商品属性（category, unit_price）・在庫スナップショット（stock_quantity）・カレンダー特徴（day_of_week, is_weekend）を特徴量として結合、カテゴリ変数は整数コード化
+    - 直近7日をテストとする時系列分割で `RandomForestRegressor` を学習し、RMSE/MAE/R2を評価
+    - MLflow（`mlflow.sklearn.autolog` + 明示的な `log_metric`/`log_model`）でrunを記録
+    - Unity Catalog Model Registry（`workspace.model.daily_sales_quantity_predictor`）にモデルを登録し、`champion` エイリアスを付与
+    - `mlflow.pyfunc.load_model` で登録済みモデルを読み込み直し、サンプル予測のラウンドトリップを確認するセルを追加
+- `pyproject.toml` に `mlflow` / `scikit-learn` を追加（`uv add mlflow scikit-learn`）
+
+### 決定事項
+
+- モデルはGoldの結合済みテーブルを使わず、Silverの3テーブルから直接特徴量エンジニアリングを行い、notebookを自己完結させる方針とした
+- 売上のない(店舗,商品,日)もdenseパネルにより数量0の観測として扱うことにした（ゼロインフレーションのリスクはpractice用途として許容）
+- `sales_amount` は `quantity × unit_price` に由来しリーケージとなるため特徴量から除外し、参考列としてのみ保持
+- `toPandas()` によるdriver集約は全体で最大1,920行に収まるため許容し、notebook内にmarkdown/コメントで明示
+- UC Model Registryのスキーマは `workspace.model`、モデル名は `daily_sales_quantity_predictor` とし、テーブル層の `_NN_` 連番プレフィックスはModel Registryには適用しないことを明記した
+
+### 発生した問題
+
+- 特になし（Silver層は前回のバグ修正により正常に動作する前提で実装）
+
+### 解決方法
+
+- （該当なし）
+
+### TODO
+
+- バッチ推論（スコアリング）notebookの追加検討
+- ゼロインフレーション対応（2段階モデル / Tweedie損失など）の検討
+- モデルエイリアス運用ルール（champion/challenger）の整備
+- Databricks上で `build_model.ipynb` を実行し、denseパネルの行数（1,920件想定）・RMSE/MAE/R2・MLflow runの記録・UC Model Registryへの登録・ラウンドトリップ検証を確認する
+
+---
+
+## 2026-07-12 (3)
+
+### 今日やったこと
+
+- `notebooks/model/build_model.ipynb` のモデルを `RandomForestRegressor` から `LightGBM`（`objective="tweedie"`）に変更
+    - 二乗誤差（MSE）は誤差が対称・等分散であることを仮定するが、日次売上数量はゼロインフレーション・平均依存の分散を持つカウントデータであるため、Tweedie目的関数の方が実態に即しているという理由をmarkdownに明記
+    - カテゴリ変数（store_id_code, product_id_code, category_code）は `categorical_feature` パラメータでLightGBMに明示
+    - MLflowトラッキングは `mlflow.sklearn` から `mlflow.lightgbm`（`autolog` / `log_model`）に切り替え
+- `notebooks/model/build_model.ipynb` の `import pyspark.sql.functions as F` を廃止し、`from pyspark.sql.functions import *` に統一（`F.` プレフィックスを使わない書き方に変更）
+- `notebooks/inference/batch_inference.ipynb` を新規作成
+    - UC Model Registryに登録済みのモデル（デフォルト `workspace.model.daily_sales_quantity_predictor` の `champion` エイリアス）を読み込み、指定日の店舗×商品ごとの需要を推論するテンプレートnotebook
+    - `dbutils.widgets` でモデル名・エイリアス・推論対象日をパラメータ化し、使い回せるようにした
+    - 特徴量は学習時と同じ列構成を `workspace.silver._20_silver_{products,inventory}` から再構築（推論は1日分なのでdenseパネル化は不要、店舗×商品マスタにカレンダー特徴を付与するのみ）
+- `pyproject.toml` に `lightgbm` を追加（`uv add lightgbm`）
+
+### 決定事項
+
+- モデルアルゴリズムはLightGBM（Tweedie目的関数）を採用し、ゼロインフレーションなカウントデータに理論的に適した損失関数を使う方針とした
+- pysparkの関数importは `as F` エイリアスを使わず `from pyspark.sql.functions import *` に統一する（今後のnotebookでもこのルールを踏襲する）
+- 推論notebookはバッチ推論用の出力テーブル書き込みまでは行わず、`display()` による結果確認までをスコープとする（シンプルなテンプレートとして提供）
+- 推論時のカテゴリエンコーディングは学習時と同じ全量マスタ（4店舗・16商品・5カテゴリ）から都度導出する方式とし、エンコーダの永続化は行わない（対象ドメインが変わらないpractice用途としての簡略化）
+
+### 発生した問題
+
+- `notebooks/model/build_model.ipynb` に一度追加した「結果サマリ」のmarkdownセルが、何らかの理由でファイルに保存されていなかった（再度セルを追加する際に発覚）
+
+### 解決方法
+
+- 該当のmarkdownセルを末尾に再追加し、ファイルに保存されていることを`grep`で確認した
+
+### TODO
+
+- Databricks上で `build_model.ipynb`（LightGBM版）を実行し、RMSE/MAE/R2・MLflow runの記録・UC Model Registryへの新バージョン登録を確認する
+- Databricks上で `notebooks/inference/batch_inference.ipynb` を実行し、widgetパラメータの動作・推論結果を確認する
+- 推論notebookの出力をテーブルに書き込む機能（バッチスコアリングの永続化）の追加を検討する
+- カテゴリエンコーディングのエンコーダ永続化（学習時のマッピングを再利用する仕組み）を検討する
+
+---
