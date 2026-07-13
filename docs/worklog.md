@@ -218,3 +218,34 @@
 - `docs/開発方針.md` に記載の可視化（地域別・口座別の取引状況サマリ）の実装を検討する
 
 ---
+
+## 2026-07-13 (2)
+
+### 今日やったこと
+
+- `notebooks/visualize/visualize_demo.ipynb`（これまでプレースホルダーのスタブのみ）に、地域×チャネル・地域×時間帯のクロス集計ヒートマップを実装
+    - `workspace.datasets.account`（region等）と `workspace.datasets.transaction`（1000万行）を `account_id` でjoinし、地域×チャネル、地域×時間帯（`transaction_timestamp` から `hour()` で導出した6時間区切り4バンド）の件数をSpark側で `groupBy().count()` 集計
+    - 集計結果（最大8×4=32行）のみを `toPandas()` し、`REGION_ORDER`/`CHANNEL_ORDER`/`TIME_BAND_ORDER` で表示順を固定した上でpivot
+    - 共通ヘルパー関数 `plot_crosstab_heatmap` を定義し、matplotlib `imshow` ベースのヒートマップ（件数を各セルに注記、単色系`Blues`カラーマップ、カラーバー付き）を1×2ダッシュボード図として表示
+    - 既存の `notebooks/practice/visualize_practice.ipynb` の house style（`japanize-matplotlib`、`warnings.filterwarnings('ignore')`、`plt.subplots` + `fig.suptitle` によるダッシュボード形式）を踏襲
+
+### 決定事項
+
+- ファクト表（1000万行）は生データのまま `toPandas()` せず、必ずSpark側でjoin＋集計してから小さい結果のみをpandasに変換する方針とした
+- 時間帯は6時間区切りの4バンド（深夜0-5時／午前6-11時／午後12-17時／夜18-23時）とし、`transaction_timestamp` が一様乱数生成のため実際の日内パターンは出ない旨をnotebook内に注記した
+- pyspark importは既存の決定事項（`from pyspark.sql.functions import *`）に合わせた
+- 2パネルのヒートマップ描画ロジックが構造的に同一なため、既存notebookの完全インライン方式から外れて共通ヘルパー関数化した（重複コピーの方が可読性を損なうと判断）
+
+### 発生した問題
+
+- 特になし
+
+### 解決方法
+
+- （該当なし）
+
+### TODO
+
+- Databricks上で `notebooks/visualize/visualize_demo.ipynb` を実行し、`pivot_channel`/`pivot_timeband` の形状（8×4）・ヒートマップの日本語表示・集計件数合計が `transaction` の総件数と一致することを確認する
+
+---
