@@ -6,4 +6,4 @@ databricks.yml
 .vscode
 main.py
 pyproject.toml
-docs/interview_overview.md
+docs/開発方針.md
