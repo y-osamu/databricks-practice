@@ -185,3 +185,36 @@
 - カテゴリエンコーディングのエンコーダ永続化（学習時のマッピングを再利用する仕組み）を検討する
 
 ---
+
+## 2026-07-13
+
+### 今日やったこと
+
+- `datasets/detasets_demo.ipynb` を、`docs/開発方針.md` の不正検知アセスメント要件（ファクト表1000万行・ディメンション5,000〜2万口座）に沿って作り直した
+    - ディメンション表 `workspace.datasets.account`（10,000口座）を新規実装。`account_id`（`ACC00001`形式）・`open_date`・`region`・`account_type`・`risk_category` を持つ。Python `random` でリスト生成 → `spark.createDataFrame` → `saveAsTable`
+    - ファクト表 `workspace.datasets.transaction`（1000万行）を、従来の `sender`/`accepter`（人名文字列・100行のみ）から全面的に作り直し。`account_id` / `counter_account_id`（振替時のみ） / `transaction_type`（入金・出金・振替の3種） / `channel` / `amount` / `transaction_timestamp` の構成に変更
+    - 1000万行はPythonのリスト内包ではなく `spark.range(NUM_TRANSACTIONS)` + 列演算（`rand()`/`floor()`/`element_at()` など）によるSpark-native生成とし、`account_id` はaccount表と算術的に対応する採番（`ACC` + 0埋め5桁）にすることでjoinを不要にした
+    - 両テーブルとも `CREATE SCHEMA IF NOT EXISTS workspace.datasets` → `saveAsTable(mode="overwrite", overwriteSchema=true)` という既存notebook（bronze/silver）と同じ書き込みパターンを踏襲
+    - 確認セルで `count()` とtransaction_typeごとの `groupBy().count()` を追加
+
+### 決定事項
+
+- ユーザー確認の結果、`transaction_type` は要件文言「入出金・振替」をそのまま2値にせず、入金・出金・振替の3値に分解する方針とした（不正検知では入出金の方向が重要な特徴量になるため）
+- 口座数は5,000〜20,000の範囲の中央値である10,000件を採用
+- 既存の `transaction` テーブル作成セル（100行・sender/accepter方式）は新スキーマに合わせて作り直す方針とし、後方互換は維持しない
+- `pyspark.sql.functions` のimportは、2026-07-12時点の決定事項（`from pyspark.sql.functions import *` に統一し `as F` エイリアスは使わない）に合わせて実装した
+
+### 発生した問題
+
+- 特になし
+
+### 解決方法
+
+- （該当なし）
+
+### TODO
+
+- Databricks上で `datasets/detasets_demo.ipynb` を実行し、`workspace.datasets.account` が10,000件、`workspace.datasets.transaction` が1000万件作成されることを確認する
+- `docs/開発方針.md` に記載の可視化（地域別・口座別の取引状況サマリ）の実装を検討する
+
+---
