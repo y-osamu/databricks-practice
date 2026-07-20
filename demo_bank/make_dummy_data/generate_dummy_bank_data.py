@@ -297,6 +297,23 @@ display(transaction_summary_df)
 
 # COMMAND ----------
 
+transaction_summary_df = (
+    transaction_summary_df
+    .sort_values(["customer_id", "month"])
+)
+
+transaction_summary_df["next_month_overdue"] = (
+    transaction_summary_df
+    .groupby("customer_id")["overdue_days"]
+    .shift(-1)
+)
+
+transaction_summary_df["label"] = (
+    transaction_summary_df["next_month_overdue"] > 0
+).astype(int)
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## CRM営業活動履歴を生成
 # MAGIC
