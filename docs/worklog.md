@@ -249,3 +249,35 @@
 - Databricks上で `notebooks/visualize/visualize_demo.ipynb` を実行し、`pivot_channel`/`pivot_timeband` の形状（8×4）・ヒートマップの日本語表示・集計件数合計が `transaction` の総件数と一致することを確認する
 
 ---
+
+## 2026-07-20
+
+### 今日やったこと
+
+- 地方銀行向けDatabricksデモ（`demo_bank/`）用のダミーデータ生成スクリプト `demo_bank/generate_dummy_bank_data.py` を新規作成
+    - 基幹システム想定のRDBデータ（`customer.csv`, `transaction_summary.csv`）とCRM SaaS想定のデータ（`crm_activity.csv`）の2種類のデータソースを、`customer_id` をキーに統合できる構成にした
+    - 企業10社（正常6社・注意3社・高優先1社）に対し `assign_scenarios` でシナリオを固定件数割り当て、代表企業（山城精密工業株式会社、`CUST01`固定）は高優先企業として売上入金▲30%（4月→7月）・預金残高▲20%（5月→7月）・延滞10日・CRM懸念文言を仕様通り再現
+    - 出力先はUnity Catalog Volume（`/Volumes/workspace/bank/raw/{rdb,crm}/`）を既定値としつつ、環境変数 `DUMMY_BANK_OUTPUT_ROOT` でローカル動作確認用のパスに切り替えられるようにした
+    - 生成後に件数・シナリオ別企業数・代表企業の数値整合性（▲30%/▲20%/延滞10日/CRM文言一致）を `assert` 付きで検証するセクションを実装
+
+### 決定事項
+
+- 当初検討していた30社・8ファイル（customer/loan/transaction/crm/external_company_info + metadata3種）の大規模仕様は不採用とし、10社・3ファイル（customer/transaction_summary/crm_activity）の簡易版に置き換えた
+- 出力先は既存の `datasets/detasets_demo.ipynb` 系（不正検知デモ、`workspace.datasets.*`）とは無関係な独立デリバラブルとし、`demo_bank/` 配下に閉じる
+- 本スクリプトはDatabricksクラスタ上で直接実行できることを前提に、`SparkSession`/`dbutils` を使わず標準的なPython I/O（`os`, `pandas.to_csv`）のみで `/Volumes/...` パスに書き込む方式とした
+- 乱数は `np.random.default_rng(SEED)` を1つだけ生成し全関数に明示的に渡す方式にし、代表企業のみ主要指標のノイズをゼロにして数値検証を厳密化した
+
+### 発生した問題
+
+- 特になし
+
+### 解決方法
+
+- （該当なし）
+
+### TODO
+
+- Databricks上で `demo_bank/generate_dummy_bank_data.py` を実行し、`/Volumes/workspace/bank/raw/` 配下にファイルが生成されることを確認する
+- Bronze/Silver/Goldレイヤーへの取り込みnotebook、および `customer_id` で統合した `company_360` Goldテーブルの実装を検討する
+
+---
